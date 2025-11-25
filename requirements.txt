@@ -1,0 +1,25 @@
+# Airflow providers (for communication with db, API, SQL e.g.)
+apache-airflow-providers-postgres
+apache-airflow-providers-http
+apache-airflow-providers-common-sql
+apache-airflow-providers-git
+
+# Core data engineering
+pandas==2.2.2
+numpy==1.26.4
+great-expectations==1.9.1
+psycopg2-binary==2.9.10
+pydantic==2.11.7
+
+# Machine Learning
+scikit-learn==1.7.2
+
+# Utilities
+pyarrow==17.0.0
+fastparquet==2024.5.0
+lxml==5.3.0
+tenacity==8.3.0
+requests>=2.32.3
+SQLAlchemy>=2.0.43
+
+

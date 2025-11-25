@@ -1,0 +1,179 @@
+# Data Quality Configuration for German Credit Dataset
+data_asset_name: german_credit_data
+batch_definition_name: german_credit_batch
+expectation_suite_name: german_credit_validation
+
+
+expectations:
+
+  # HIGH-IMPACT CATEGORICAL FEATURES 
+  # ==============================================
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: checking_account_status}
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: checking_account_status
+      value_set: ["A11", "A12", "A13", "A14"]
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: credit_history}
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: credit_history
+      value_set: ["A30", "A31", "A32", "A33", "A34"]
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: purpose}
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: purpose
+      value_set: ["A40","A41","A42","A43","A44","A45","A46","A48","A49","A410"]
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: savings_account_bonds}
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: savings_account_bonds
+      value_set: ["A61","A62","A63","A64","A65"]
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: foreign_worker}
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: foreign_worker
+      value_set: ["A201","A202"]
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: property}
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: property
+      value_set: ["A121","A122","A123","A124"]
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: status_n_sex}
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: status_n_sex
+      value_set: ["A91","A92","A93","A94"]
+
+
+  # HIGH-IMPACT NUMERICAL FEATURES 
+  # ==============================================
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: credit_amount}
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: credit_amount
+      min_value: 250
+      max_value: 20000
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: duration_in_month}
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: duration_in_month
+      min_value: 4
+      max_value: 72
+
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs: {column: age_in_years}
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: age_in_years
+      min_value: 19
+      max_value: 75
+
+  # DISTRIBUTION CHECK (lighter)
+  # ==============================================
+  #- expectation_type: expect_column_quantile_values_to_be_between
+  #  kwargs:
+  #    column: credit_amount
+  #    quantile_ranges:
+  #      quantiles: [0.05, 0.5, 0.95]
+  #      value_ranges:
+  #        - [300, 2500]     # 5% quantil 
+  #        - [2000, 7000]    # median
+  #        - [12000, 20000]  # 95% quantil
+  #    allow_relative_error: true
+
+
+
+  # MEDIUM-IMPACT FEATURES (lighter)
+  # ==============================================
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: employment
+      value_set: ["A71","A72","A73","A74","A75"]
+
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: installment
+      min_value: 1
+      max_value: 4
+
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: residence
+      min_value: 1
+      max_value: 4
+
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: other_debtors_guarantors
+      value_set: ["A101","A102","A103"]
+
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: other_installment_plans
+      value_set: ["A141","A142","A143"]
+
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: housing
+      value_set: ["A151","A152","A153"]
+
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: existing_credits_no
+      min_value: 1
+      max_value: 4
+
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: job
+      value_set: ["A171","A172","A173","A174"]
+
+  - expectation_type: expect_column_values_to_be_between
+    kwargs:
+      column: liability_responsibles
+      min_value: 1
+      max_value: 2
+
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: telephone
+      value_set: ["A191","A192"]
+
+  # TARGET
+  # ==============================================
+  - expectation_type: expect_column_values_to_be_in_set
+    kwargs:
+      column: category
+      value_set: [1, 2]
+  - expectation_type: expect_column_values_to_not_be_null
+    kwargs:
+      column: category
+
+  
+  # RELATIONSHIP / SANITY
+  # ==============================================
+  - expectation_type: expect_column_pair_values_A_to_be_greater_than_B
+    kwargs:
+      column_A: credit_amount
+      column_B: duration_in_month
+      or_equal: true
+
+meta:
+  notes: "DQ suite for dataset aiming to use LR+RF."
+  created_date: "2025-11-23"
