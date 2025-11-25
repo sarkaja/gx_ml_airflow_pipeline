@@ -70,7 +70,7 @@ def run_data_quality_from_yaml_and_csv(
     Returns:
         Dictionary with validation results
     """
-    dq_uri = os.environ["DQ_SQLALCHEMY_URI"]
+    dq_conn = os.environ["AIRFLOW_CONN_DQ_POSTGRES"]
     cfg = load_yaml_config(yaml_str_or_path)
     df = load_csv_as_df(
         csv_path,
@@ -100,7 +100,7 @@ def run_data_quality_from_yaml_and_csv(
     validation_duration = time.time() - start_time
     
     if save_to_db:
-        saver = DQResultSaver(dq_uri)
+        saver = DQResultSaver(dq_conn)
         success = saver.save_results(
             dataset_id=dataset_id,
             run_id=run_id,

@@ -198,7 +198,7 @@ class MLRunner:
         if dataset_name is None:
             dataset_name = os.path.basename(csv_path).replace('.csv', '')
         
-        dq_uri = os.environ["DQ_SQLALCHEMY_URI"]
+        dq_conn = os.environ["AIRFLOW_CONN_DQ_POSTGRES"]
         # Run id based on time - dynamic
         #run_id = f"ml_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
@@ -208,7 +208,7 @@ class MLRunner:
             results = self.run_full_pipeline(csv_path, dataset_name)
             
             if save_to_db:
-                saver = MLResultSaver(dq_uri)
+                saver = MLResultSaver(dq_conn)
                 success = saver.save_ml_results(
                     dataset_id=dataset_name,
                     run_id=shared_run_id,
