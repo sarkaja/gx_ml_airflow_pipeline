@@ -2,7 +2,7 @@
 set -e
 
 echo "Creating necessary directories..."
-mkdir -p /opt/airflow/{logs,dags,plugins,config,great_expectations}
+mkdir -p /opt/airflow/{logs,dags,plugins,config,scripts,include}
 
 echo "Setting ownership..."
 chown -R "${AIRFLOW_UID}:0" /opt/airflow/

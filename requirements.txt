@@ -20,6 +20,6 @@ fastparquet==2024.5.0
 lxml==5.3.0
 tenacity==8.3.0
 requests>=2.32.3
-SQLAlchemy>=2.0.43
+SQLAlchemy
 
 
