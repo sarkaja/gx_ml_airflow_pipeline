@@ -1,10 +1,8 @@
 from __future__ import annotations
-import great_expectations as gx
-import pandas
 import logging
 import os
 import sys
-from scripts.setup_environment import setup_environment
+from scripts.get_environment_config import setup_environment
 from datetime import datetime, timedelta
 import os
 import yaml
@@ -24,13 +22,14 @@ logger = logging.getLogger("airflow.test")
 
 def dq_corruption():
     logger.info("=== STARTING DQ CORRUPTION ===")
+    from scripts.get_environment_config import setup_environment, get_all_paths_from_config
+    project_path = setup_environment()
     
+    sys.path.append(os.path.join(project_path, 'include', 'degradation_strategies'))
     from degradation_strategies.corruption_experiment_runner import run_corruption_experiment
 
-    csv_path = os.path.join(project_path, 'include', 'data', 'raw', 'german_credit.csv')
 
-    yaml_path = os.path.join(project_path, 'include', 'dq_configs', 'german_credit_validation.yaml')
-   
+    yaml_path, csv_path = get_all_paths_from_config()
 
     results = run_corruption_experiment(
         original_csv_path=csv_path,
