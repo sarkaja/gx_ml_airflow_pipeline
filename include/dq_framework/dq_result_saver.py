@@ -63,6 +63,7 @@ class DQResultSaver:
         Returns:
             Dictionary with analysis metrics
         """
+        logger.info(f"Full results: {results}")
         # Calculate statistics - either from results or manually
         if 'statistics' in results and results['statistics']:
             stats = results['statistics']
@@ -78,7 +79,8 @@ class DQResultSaver:
         critical_failures = 0
         warning_failures = 0
         key_columns_results = {}
-        
+        unexpected_count_total = 0
+
         # Important columns for monitoring
         key_columns = {
             'checking_account_status', 'credit_history', 'purpose', 
@@ -90,7 +92,9 @@ class DQResultSaver:
             expectation_config = result.get('expectation_config', {})
             kwargs = expectation_config.get('kwargs', {})
             column = kwargs.get('column')
+            result_inner = result.get('result', {})
             
+            unexpected_count_total += result_inner.get('unexpected_count',0)
             if not result.get('success', False):
                 severity = result.get('expectation_config', {}).get('severity', 'critical')
                 
@@ -124,6 +128,10 @@ class DQResultSaver:
             if 'expect_column_values_to_be_in_set' in result.get('expectation_config', {}).get('type', '')
         )
         
+        total_examined_values = total_expectations*self._get_record_count(results)
+        real_success_rate = ((total_examined_values - unexpected_count_total) / total_examined_values)*100
+        logger.info(f"Success rate with proportion: {real_success_rate}")
+
         return {
             'total_expectations': total_expectations,
             'successful_expectations': successful_expectations,
