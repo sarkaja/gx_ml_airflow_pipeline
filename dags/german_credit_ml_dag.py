@@ -35,26 +35,24 @@ def run_ml_pipeline(**context):
     """
     try:
         logger.info("Starting ML Pipeline")
-        dag_run = context["dag_run"]
         execution_date = context.get('execution_date', datetime.now())
         shared_run_id = f"pipeline_{execution_date.strftime('%Y%m%d_%H%M%S')}"
 
-        from scripts.setup_environment import setup_environment
-        project_path = setup_environment()
-
         from ml_pipeline.ml_runner import MLRunner
 
-        csv_path = os.path.join(project_path, 'include', 'data', 'raw', 'german_credit.csv')
+        
+        dag_run = context.get('dag_run')
+        csv_path = dag_run.conf.get('csv_path')
+        filename = os.path.basename(csv_path)
+
         logger.info(f"CSV path: {csv_path}")
         
-        if not os.path.exists(csv_path):
-            raise FileNotFoundError(f"CSV file not found: {csv_path}")
         
         # Initialize and run ML pipeline
         ml_runner = MLRunner(test_size=0.2, random_state=42, cv_folds=5)
         results = ml_runner.run_full_pipeline_with_saving(
             csv_path, 
-            "german_credit_original",
+            filename,  # filename used as a dataset id 
             save_to_db=True,
             shared_run_id=shared_run_id,
         )
@@ -103,14 +101,12 @@ with DAG(
     check_dq_task = PythonOperator(
         task_id='check_dq_results',
         python_callable=check_dq_results,
-        
     )
 
     # Main ML task
     ml_task = PythonOperator(
         task_id='run_ml_pipeline',
-        python_callable=run_ml_pipeline,
-        
+        python_callable=run_ml_pipeline,   
     )
 
     end = EmptyOperator(task_id='end_ml')

@@ -21,9 +21,9 @@ def create_conjoined_corruption(df: pd.DataFrame, corruption_level: str = "mediu
     
     # define which corruptions should be combined
     #df_corrupted = introduce_missing_values(df, corruption_level)
-    df_corrupted = introduce_outliers(df, corruption_level)
-    df_corrupted = introduce_categorical_errors(df_corrupted, corruption_level)
+    #df_corrupted = introduce_outliers(df, corruption_level)
+    df_corrupted = introduce_categorical_errors(df, corruption_level)
     #df_corrupted = introduce_label_errors(df_corrupted, corruption_level)
-    df_corrupted = introduce_relationship_violations(df_corrupted, corruption_level)
+    #df_corrupted = introduce_relationship_violations(df_corrupted, corruption_level)
     
     return df_corrupted

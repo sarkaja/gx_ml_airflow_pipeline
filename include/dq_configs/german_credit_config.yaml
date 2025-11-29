@@ -1,0 +1,12 @@
+# Data Quality Configuration for German Credit Dataset
+
+# modify validation file name used as config - gx suite
+yaml_validation_file: german_credit_validation.yaml
+
+# modify folder name which will be as a source for csv_file for dag
+# mostly raw for corruption and corrupted for dq pipeline
+csv_folder: raw
+
+# modify file name which will be used for dag
+csv_file_for_dq: german_credit.csv
+
