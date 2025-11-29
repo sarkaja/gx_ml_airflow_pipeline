@@ -137,6 +137,48 @@ class DataQualityImprover:
         
         return df_clean
 
+    def multivariate_outlier_detection(self, df: pd.DataFrame, contamination: float = 0.1) -> pd.DataFrame:
+        """
+        Detect outliers using Isolation Forest.
+        
+        Args:
+            df: DataFrame to check for outliers
+            contamination: Expected proportion of outliers
+            
+        Returns:
+            DataFrame with corrected outliers
+        """
+        df_clean = df.copy()
+        
+        numeric_columns = df_clean.select_dtypes(include=[np.number]).columns
+        logger.info(f"{numeric_columns} numeric_columns ")
+        if len(numeric_columns) > 0:
+            iso_forest = IsolationForest(contamination=contamination, random_state=42)
+            outliers = iso_forest.fit_predict(df_clean[numeric_columns])
+            logger.info(f"{outliers} dsjk ")
+            outlier_mask = outliers == -1
+            if outlier_mask.sum() > 0:
+                logger.info(f"{outlier_mask} outlier_mask ")
+                for column in numeric_columns:
+                    Q1 = df_clean[column].quantile(0.25)
+                    Q3 = df_clean[column].quantile(0.75)
+                    IQR = Q3 - Q1
+                    
+                    # Winsorize outliers insteda of removing them - adjustable! 
+                    lower_bound = Q1 - 1.5 * IQR
+                    upper_bound = Q3 + 1.5 * IQR
+                    
+                    column_outliers = outlier_mask & (
+                        (df_clean[column] < lower_bound) | 
+                        (df_clean[column] > upper_bound)
+                    )
+                    
+                    if column_outliers.sum() > 0:
+                        df_clean.loc[df_clean[column] < lower_bound, column] = lower_bound
+                        df_clean.loc[df_clean[column] > upper_bound, column] = upper_bound
+        
+        return df_clean
+    
 
     def _handle_categorical_errors(self, df: pd.DataFrame) -> pd.DataFrame:
         """
