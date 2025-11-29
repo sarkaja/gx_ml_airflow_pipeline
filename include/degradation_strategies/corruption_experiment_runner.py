@@ -35,10 +35,10 @@ def run_corruption_experiment(original_csv_path: str, yaml_config_path: str,
     for scenario in scenarios:
         print(f"\n=== Running {scenario.upper()} corruption scenario ===")
         
-        # create and save the corrupted df
+        # create and save the corrupted df - can be modified to use just one corruption
         corrupted_df = create_conjoined_corruption(original_df, scenario)
         
-        corrupted_csv_path = os.path.join(output_dir, f"corrupted_data_{scenario}.csv")
+        corrupted_csv_path = os.path.join(output_dir, f"corruption_{scenario}_data.csv")
         corrupted_df.to_csv(corrupted_csv_path, sep=';', index=False)
         
         # run DQ validation on corrupted data
@@ -46,8 +46,8 @@ def run_corruption_experiment(original_csv_path: str, yaml_config_path: str,
             dq_results = run_data_quality_from_yaml_and_csv(
                 yaml_config_path,
                 corrupted_csv_path,
-                dataset_id=f"corrupted_data_{scenario}",
-                run_id=f"corrupted_data_{scenario}",
+                dataset_id=f"corruption_{scenario}_data",
+                run_id=f"corruption_{scenario}_data",
                 save_to_db=True
             )
             

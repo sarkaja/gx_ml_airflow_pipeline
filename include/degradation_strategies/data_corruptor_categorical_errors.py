@@ -29,27 +29,27 @@ def introduce_categorical_errors(df: pd.DataFrame, corruption_level: str = "medi
     # corruption probabilities
     if corruption_level == "light":
         probabilities = {
-            'checking_account_status': 0.04,
+            'checking_account_status': 0.03,
             'credit_history': 0.03,
-            'purpose': 0.05
+            'purpose': 0.03
         }
     elif corruption_level == "medium":
         probabilities = {
-            'checking_account_status': 0.10,
-            'credit_history': 0.08,
-            'purpose': 0.12,
-            'savings_account_bonds': 0.06,
+            'checking_account_status': 0.05,
+            'credit_history': 0.05,
+            'purpose': 0.05,
+            'savings_account_bonds': 0.05,
             'foreign_worker': 0.05
         }
     else:  # severe
         probabilities = {
-            'checking_account_status': 0.31,
-            'credit_history': 0.25,
-            'purpose': 0.23,
-            'savings_account_bonds': 0.24,
-            'foreign_worker': 0.24,
-            'property': 0.28,
-            'status_n_sex': 0.28
+            'checking_account_status': 0.08,
+            'credit_history': 0.08,
+            'purpose': 0.08,
+            'savings_account_bonds': 0.08,
+            'foreign_worker': 0.08,
+            'property': 0.08,
+            'status_n_sex': 0.08
         }
     
     for column, prob in probabilities.items():
