@@ -42,7 +42,7 @@ class DQYamlConfig:
     expectations: List[Dict[str, Any]]
 
 
-def load_yaml_config(yaml_str_or_path: Union[str, os.PathLike]) -> DQYamlConfig:
+def gx_load_yaml_config(yaml_str_or_path: Union[str, os.PathLike]) -> DQYamlConfig:
     """
     Load Data Quality configuration from YAML string or file path.
     

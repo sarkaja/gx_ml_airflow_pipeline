@@ -3,10 +3,21 @@
 # modify validation file name used as config - gx suite
 yaml_validation_file: german_credit_validation.yaml
 
-# modify folder name which will be as a source for csv_file for dag
 # mostly raw for corruption and corrupted for dq pipeline
 csv_folder: raw
 
-# modify file name which will be used for dag
+# modify file name which will be used for dag #german_credit.csv
 csv_file_for_dq: german_credit.csv
 
+# modify the tested scenario, corruption level and dq threshold to be met 
+corruption_function: missing_values
+corruption_scenario: severe
+dq_threshold: 90
+
+# shared run id to idenify the run of the pipeline 
+run_id: "initial_load"
+
+# modify the name table which is a base for table creation, updates
+database:
+  table_name: "german_credit_data"  
+  schema: "public"

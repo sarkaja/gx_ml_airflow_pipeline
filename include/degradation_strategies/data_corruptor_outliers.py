@@ -2,19 +2,30 @@
 import pandas as pd
 import numpy as np
 
-def introduce_outliers(df: pd.DataFrame, corruption_level: str = "medium") -> pd.DataFrame:
+
+def introduce_outliers(
+    df: pd.DataFrame,
+    corruption_level: str,
+    random_state: int | None = None
+) -> pd.DataFrame:
     """
-    Introduce outliers in numerical features that break value range expectations.
-    
+    Introduce outliers into numerical features that break expected value ranges.
+
     Args:
-        df: Original German Credit dataset
-        corruption_level: "light", "medium", or "severe"
-        
+        df: Original dataset to be corrupted.
+        corruption_level: One of "light", "medium", or "severe". Higher levels
+            affect more columns and use higher probabilities and more extreme
+            multipliers for outliers.
+        random_state: Optional seed for reproducibility.
+
     Returns:
-        Corrupted DataFrame with outliers
+        A corrupted DataFrame with injected outliers according to the selected
+        corruption level.
     """
     df_corrupted = df.copy()
-    
+    rng = np.random.default_rng(random_state)
+    n_rows = len(df_corrupted)
+
     # outlier parameters based on corruption level
     if corruption_level == "light":
         outlier_probs = {
@@ -23,11 +34,10 @@ def introduce_outliers(df: pd.DataFrame, corruption_level: str = "medium") -> pd
             'age_in_years': 0.02
         }
         multipliers = {
-            'credit_amount': (3, 6),  # min, max multiplier
+            'credit_amount': (3, 6),   # min, max multiplier
             'duration_in_month': (3, 6),
             'age_in_years': (1.5, 2.5)
         }
-
         extreme_prob = 0.20
 
     elif corruption_level == "medium":
@@ -43,10 +53,9 @@ def introduce_outliers(df: pd.DataFrame, corruption_level: str = "medium") -> pd
             'age_in_years': (2, 3),
             'installment': (2, 3)
         }
-
         extreme_prob = 0.30
 
-    else:  # severe
+    else:  # "severe"
         outlier_probs = {
             'credit_amount': 0.07,
             'duration_in_month': 0.06,
@@ -61,32 +70,55 @@ def introduce_outliers(df: pd.DataFrame, corruption_level: str = "medium") -> pd
             'installment': (3, 6),
             'residence': (3, 6)
         }
-
         extreme_prob = 0.40
 
     for column, prob in outlier_probs.items():
-        if column in df_corrupted.columns:
-            mask = np.random.random(len(df_corrupted)) < prob
-            n_outliers = mask.sum()
-            
-            if n_outliers > 0:
-                min_mult, max_mult = multipliers[column]
-                multipliers_vals = np.random.uniform(min_mult, max_mult, n_outliers)
-                
-                # For some outliers, multiply; for others, set extreme values
-                for i, idx in enumerate(df_corrupted[mask].index):
-                    if np.random.random()  < (1 - extreme_prob): 
-                        df_corrupted.loc[idx, column] *= multipliers_vals[i]
-                    else:  # 30% set extreme fixed value
-                        if column == 'credit_amount':
-                            df_corrupted.loc[idx, column] = np.random.choice([50000, 100000, 250000])
-                        elif column == 'duration_in_month':
-                            df_corrupted.loc[idx, column] = np.random.choice([120, 180, 240])
-                        elif column == 'age_in_years':
-                            df_corrupted.loc[idx, column] = np.random.choice([100, 120, 150])
-                        elif column == 'installment':
-                            df_corrupted.loc[idx, column] *= np.random.uniform(4, 6)
-                        elif column == 'residence':
-                            df_corrupted.loc[idx, column] = np.random.choice([15, 20, 25])
-    
+        if column not in df_corrupted.columns or n_rows == 0:
+            continue
+
+        # mask of rows where outliers will be introduced for this column
+        mask = rng.random(n_rows) < prob
+        if not mask.any():
+            continue
+
+        idx = df_corrupted.index[mask]
+        current_vals = df_corrupted.loc[idx, column].to_numpy(dtype=float)
+
+        # multipliers for outliers
+        min_mult, max_mult = multipliers[column]
+        multipliers_vals = rng.uniform(min_mult, max_mult, size=len(idx))
+
+        # decide which outliers will be "extreme" vs. "just multiplied"
+        extreme_mask = rng.random(len(idx)) < extreme_prob
+
+        new_vals = current_vals.copy()
+
+        # 1) regular outliers – only scaling by a multiplier
+        normal_mask = ~extreme_mask
+        if normal_mask.any():
+            new_vals[normal_mask] = current_vals[normal_mask] * multipliers_vals[normal_mask]
+
+        # 2) extreme outliers – fixed values / special logic
+        if extreme_mask.any():
+            if column == 'credit_amount':
+                extreme_vals = rng.choice([50000, 100000, 250000], size=extreme_mask.sum())
+            elif column == 'duration_in_month':
+                extreme_vals = rng.choice([120, 180, 240], size=extreme_mask.sum())
+            elif column == 'age_in_years':
+                extreme_vals = rng.choice([100, 120, 150], size=extreme_mask.sum())
+            elif column == 'installment':
+                # for installment, extremes = multiples between 4–6
+                extreme_multipliers = rng.uniform(4, 6, size=extreme_mask.sum())
+                extreme_vals = current_vals[extreme_mask] * extreme_multipliers
+            elif column == 'residence':
+                extreme_vals = rng.choice([15, 20, 25], size=extreme_mask.sum())
+            else:
+                # fallback – just a larger multiplier
+                extreme_vals = current_vals[extreme_mask] * multipliers_vals[extreme_mask]
+
+            new_vals[extreme_mask] = extreme_vals
+
+        # write back into the DataFrame
+        df_corrupted.loc[idx, column] = new_vals
+
     return df_corrupted

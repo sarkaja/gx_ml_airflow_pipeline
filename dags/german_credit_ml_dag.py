@@ -1,115 +1,117 @@
 # dags/german_credit_ml_dag.py
+"""
+Machine Learning DAG for the German Credit dataset.
+
+This DAG:
+- Waits for a trigger from the DQ pipeline
+- Loads the corresponding (clean or remediated) dataset from PostgreSQL
+- Runs the full ML pipeline (preprocessing → training → evaluation → saving results)
+
+Required trigger parameters (via TriggerDagRunOperator):
+    corruption_type
+    corruption_scenario
+    dataset_id
+    table_name
+"""
+
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
-import os
-import sys
 import logging
-from dags.datasets import ML_READY_DATASET
 
 logger = logging.getLogger("airflow.task")
 
 
-def check_dq_results(**context):
-    """
-    Check DQ results before running ML pipeline.
-    """
-    try:
-        # Data taken from context - it was triggered so context is present 
-        dag_run = context.get('dag_run')
-        if dag_run and dag_run.conf:
-            logger.info(f"Trigger config: {dag_run.conf}")
-        
-        logger.info("DQ results verified - proceeding with ML")
-        return True
-        
-    except Exception as e:
-        logger.error(f"ERROR checking DQ results: {e}")
-        raise
-
-
 def run_ml_pipeline(**context):
     """
-    Run ML pipeline for German Credit dataset.
+    Load corrupted/remediated data and execute full ML pipeline:
+    preprocessing → training → evaluation → database saving.
+
+    Args:
+        context: Airflow runtime context containing trigger parameters
+
+    Returns:
+        ML pipeline evaluation results (best model, metrics, CV scores)
     """
     try:
-        logger.info("Starting ML Pipeline")
-        execution_date = context.get('execution_date', datetime.now())
-        shared_run_id = f"pipeline_{execution_date.strftime('%Y%m%d_%H%M%S')}"
+        logger.info("Starting ML pipeline...")
 
         from ml_pipeline.ml_runner import MLRunner
+        from sql.postgres_manager import PostgresManager
 
-        
-        dag_run = context.get('dag_run')
-        csv_path = dag_run.conf.get('csv_path')
-        filename = os.path.basename(csv_path)
+        dag_run = context.get("dag_run")
 
-        logger.info(f"CSV path: {csv_path}")
-        
-        
-        # Initialize and run ML pipeline
+        corruption_type = dag_run.conf.get("corruption_type")
+        dataset_id = dag_run.conf.get("dataset_id")
+        corruption_scenario = dag_run.conf.get("corruption_scenario")
+        table_name = dag_run.conf.get("table_name")
+
+        db_manager = PostgresManager()
+
+        # Load dataset selected by DQ + corruption pipeline
+        df = db_manager.load_selected_columns(
+            corruption_scenario=corruption_scenario,
+            corruption_type=corruption_type,
+            table_name=table_name,
+            dataset_id=dataset_id,
+        )
+
+        # Run ML pipeline
         ml_runner = MLRunner(test_size=0.2, random_state=42, cv_folds=5)
         results = ml_runner.run_full_pipeline_with_saving(
-            csv_path, 
-            filename,  # filename used as a dataset id 
+            df=df,
+            dataset_id=dataset_id,
             save_to_db=True,
-            shared_run_id=shared_run_id,
         )
-        
-        # Post run logging the results
-        shared_run_id = results["shared_run_id"]
+
+        # Logging best results
         best_model = results["best_model"]
         best_accuracy = results["best_accuracy"]
-        
-        logger.info(f"Pipeline completed: {shared_run_id}")
-        logger.info(f"Best Model: {best_model} with accuracy: {best_accuracy:.3f}")
-        
+        logger.info(f"Best model: {best_model} (Accuracy: {best_accuracy:.3f})")
+
         for result in results["test_results"]:
-            logger.info(f"Resuts {result['model']}: "
-                       f"Accuracy: {result['accuracy']:.3f}, "
-                       f"ROC-AUC: {result['roc_auc']:.3f}")
-        
+            logger.info(
+                f"Results for {result['model']}: "
+                f"Accuracy={result['accuracy']:.3f}, "
+                f"ROC-AUC={result['roc_auc']:.3f}"
+            )
+
         return results
-        
+
     except Exception as e:
-        logger.error(f"ML Pipeline failed: {e}")
+        logger.error(f"ML pipeline failed: {e}")
         raise
 
+
+# ---------------------- Airflow DAG Definition ---------------------- #
+
 default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    "owner": "airflow",
+    "depends_on_past": False,
+    "start_date": datetime(2025, 12, 1),
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
 }
 
 with DAG(
-    'german_credit_ml_pipeline',
+    "german_credit_ml_pipeline",
     default_args=default_args,
-    description='Machine Learning pipeline for German Credit dataset',
-    schedule=[ML_READY_DATASET], 
+    description="Machine Learning pipeline for German Credit dataset",
+    schedule="@daily",
     catchup=False,
-    tags=['machine_learning', 'credit_risk'],
+    tags=["machine_learning", "credit_risk"],
 ) as dag:
 
-    start = EmptyOperator(task_id='start_ml')
+    start = EmptyOperator(task_id="start_ml")
 
-    # Check DQ results before proceeding
-    check_dq_task = PythonOperator(
-        task_id='check_dq_results',
-        python_callable=check_dq_results,
-    )
-
-    # Main ML task
     ml_task = PythonOperator(
-        task_id='run_ml_pipeline',
-        python_callable=run_ml_pipeline,   
+        task_id="run_ml_pipeline",
+        python_callable=run_ml_pipeline,
     )
 
-    end = EmptyOperator(task_id='end_ml')
+    end = EmptyOperator(task_id="end_ml")
 
-    # Define workflow
-    start >> check_dq_task >> ml_task >> end
+    start >> ml_task >> end

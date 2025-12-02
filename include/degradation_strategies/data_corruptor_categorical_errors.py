@@ -2,64 +2,73 @@
 import pandas as pd
 import numpy as np
 
-def introduce_categorical_errors(df: pd.DataFrame, corruption_level: str = "medium") -> pd.DataFrame:
+
+def introduce_categorical_errors(
+    df: pd.DataFrame,
+    scenario: str,
+    random_state: int | None = None
+) -> pd.DataFrame:
     """
     Introduce categorical value errors and invalid categories.
-    
+
     Args:
-        df: Original German Credit dataset
-        corruption_level: "light", "medium", or "severe"
-        
+        df: Original dataset to be corrupted.
+        scenario: Corruption scenario, one of "light", "medium", or "severe".
+                  Higher severity introduces errors into more columns and with
+                  a higher probability.
+        random_state: Optional seed for reproducibility.
+
     Returns:
-        Corrupted DataFrame with categorical errors
+        A corrupted DataFrame with injected categorical errors and invalid
+        category values according to the selected scenario.
     """
     df_corrupted = df.copy()
-    
+    rng = np.random.default_rng(random_state)
+    n_rows = len(df_corrupted)
+
     # invalid values for each categorical column
     invalid_values = {
         'checking_account_status': ["X99", "INVALID", "A99", ""],
-        'credit_history': ["X99", "ERROR", "A99", "UNKNOWN"],
+        'credit_history': ["X99", "ERROR", "A99", "OTHER"],
         'purpose': ["X99", "INVALID", "A99", "OTHER"],
         'savings_account_bonds': ["X99", "ERROR", "A99", ""],
-        'foreign_worker': ["X99", "INVALID", "A99"],
-        'property': ["X99", "ERROR", "A125", "A126"],
-        'status_n_sex': ["X99", "INVALID", "A95", "A96"]
+        'foreign_worker': ["X99", "INVALID", "A99", "AER"],
+        'property': ["X99", "ERROR", "A125", "A126", "A89"],
+        'status_n_sex': ["X99", "INVALID", "A95", "A96", ""],
     }
-    
-    # corruption probabilities
-    if corruption_level == "light":
-        probabilities = {
-            'checking_account_status': 0.03,
-            'credit_history': 0.03,
-            'purpose': 0.03
-        }
-    elif corruption_level == "medium":
-        probabilities = {
-            'checking_account_status': 0.05,
-            'credit_history': 0.05,
-            'purpose': 0.05,
-            'savings_account_bonds': 0.05,
-            'foreign_worker': 0.05
-        }
-    else:  # severe
-        probabilities = {
-            'checking_account_status': 0.08,
-            'credit_history': 0.08,
-            'purpose': 0.08,
-            'savings_account_bonds': 0.08,
-            'foreign_worker': 0.08,
-            'property': 0.08,
-            'status_n_sex': 0.08
-        }
-    
-    for column, prob in probabilities.items():
-        if column in df_corrupted.columns and column in invalid_values:
-            mask = np.random.random(len(df_corrupted)) < prob
-            n_errors = mask.sum()
-            
-            if n_errors > 0:
-                invalid_choices = invalid_values[column]
-                for idx in df_corrupted[mask].index:
-                    df_corrupted.loc[idx, column] = np.random.choice(invalid_choices)
-    
+
+    # base grouping of columns by "importance"
+    base_cols = ["checking_account_status", "credit_history", "purpose"]
+    medium_extra = ["savings_account_bonds", "foreign_worker"]
+    severe_extra = ["property", "status_n_sex"]
+
+    if scenario == "light":
+        cols_to_corrupt = base_cols
+        prob = 0.03
+    elif scenario == "medium":
+        cols_to_corrupt = base_cols + medium_extra
+        prob = 0.05
+    else:  # "severe"
+        cols_to_corrupt = base_cols + medium_extra + severe_extra
+        prob = 0.08
+
+    for column in cols_to_corrupt:
+        if column not in df_corrupted.columns:
+            continue
+        if column not in invalid_values:
+            continue
+        if n_rows == 0:
+            continue
+
+        # mask of rows where we introduce errors
+        mask = rng.random(n_rows) < prob
+        if not mask.any():
+            continue
+
+        idx = df_corrupted.index[mask]
+        choices = invalid_values[column]
+        # random invalid values for all selected rows
+        sampled_invalids = rng.choice(choices, size=len(idx), replace=True)
+        df_corrupted.loc[idx, column] = sampled_invalids
+
     return df_corrupted

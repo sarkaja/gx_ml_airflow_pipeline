@@ -1,53 +1,55 @@
 # data_corruptor_missing_values.py
 import pandas as pd
 import numpy as np
-import random
 
-def introduce_missing_values(df: pd.DataFrame, corruption_level: str = "medium") -> pd.DataFrame:
+def introduce_missing_values(df: pd.DataFrame, scenario: str) -> pd.DataFrame:
     """
     Introduce missing values in high-impact features based on corruption level.
     
     Args:
         df: Original German Credit dataset
-        corruption_level: "light", "medium", or "severe"
+        scenario: "light", "medium", or "severe"
         
     Returns:
         Corrupted DataFrame with missing values
     """
     df_corrupted = df.copy()
     
-    # Define missing value probabilities based on corruption level
-    if corruption_level == "light":
-        probabilities = {
-            'checking_account_status': 0.05,
-            'credit_history': 0.03,
-            'credit_amount': 0.02,
-            'duration_in_month': 0.02
+    # Define exact number of missing values based on corruption level
+    if scenario == "light":
+        missing_counts = {
+            'checking_account_status': 20,
+            'credit_history': 30,
+            'credit_amount': 20,
+            'duration_in_month': 20
         }
-    elif corruption_level == "medium":
-        probabilities = {
-            'checking_account_status': 0.15,
-            'credit_history': 0.10,
-            'credit_amount': 0.08,
-            'duration_in_month': 0.08,
-            'purpose': 0.10,
-            'age_in_years': 0.05
+    elif scenario == "medium":
+        missing_counts = {
+            'checking_account_status': 40,
+            'credit_history': 50,
+            'credit_amount': 40,
+            'duration_in_month': 40,
+            'purpose': 40,
+            'age_in_years': 50
         }
     else:  # severe
-        probabilities = {
-            'checking_account_status': 0.25,
-            'credit_history': 0.20,
-            'credit_amount': 0.15,
-            'duration_in_month': 0.15,
-            'purpose': 0.20,
-            'age_in_years': 0.10,
-            'savings_account_bonds': 0.15,
-            'foreign_worker': 0.10
+        missing_counts = {
+            'checking_account_status': 20,
+            'credit_history': 30,
+            'credit_amount': 20,
+            'duration_in_month': 80,
+            'purpose': 50,
+            'age_in_years': 50,
+            'savings_account_bonds': 60,
+            'foreign_worker': 50
         }
     
-    for column, prob in probabilities.items():
+    for column, count in missing_counts.items():
         if column in df_corrupted.columns:
-            mask = np.random.random(len(df_corrupted)) < prob
-            df_corrupted.loc[mask, column] = np.nan
+            # Randomly select 'count' indices to set as NaN
+            if count < len(df_corrupted):
+                indices = np.random.choice(len(df_corrupted), size=count, replace=False)
+                df_corrupted.loc[indices, column] = np.nan
     
     return df_corrupted
+

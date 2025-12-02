@@ -11,14 +11,10 @@ import logging
 import os
 import sys
 from typing import Dict, Optional, Union
-from include.scripts.setup_environment import setup_environment
 from include.dq_framework.column_utils import normalize_columns
 
-PROJECT_DIR = setup_environment()
-if PROJECT_DIR not in sys.path:
-    sys.path.append(PROJECT_DIR)
-
 logger = logging.getLogger("airflow.task")
+
 
 def load_csv_as_df(
     csv_path: Union[str, "os.PathLike"],
@@ -29,7 +25,20 @@ def load_csv_as_df(
     dtype: Optional[dict] = None,
     normalize_colnames: bool = True,
 ) -> pd.DataFrame:
-    """Load CSV file into DataFrame with optional column normalization."""
+    """
+    Load CSV file into a DataFrame with optional column-name normalization.
+
+    Args:
+        csv_path: File path to CSV.
+        sep: Field delimiter.
+        encoding: File encoding.
+        na_values: Additional indicators of missing values.
+        dtype: Optional dtype mapping.
+        normalize_colnames: Whether to normalize column names.
+
+    Returns:
+        Loaded DataFrame.
+    """
     df = pd.read_csv(
         csv_path,
         sep=sep,
@@ -41,18 +50,21 @@ def load_csv_as_df(
         df = normalize_columns(df)
     return df
 
+
 class DataPreprocessor:
     """
-    Data preprocessing for German Credit dataset.
+    Preprocessing pipeline for the German Credit dataset:
+    handles target creation, imputation, feature identification,
+    transformation pipelines, and train/test splitting.
     """
-    
+
     def __init__(self, test_size: float = 0.2, random_state: int = 42):
         """
-        Initialize data preprocessor.
-        
+        Initialize preprocessing configuration.
+
         Args:
-            test_size: Proportion of test set
-            random_state: Random seed for reproducibility
+            test_size: Test split ratio.
+            random_state: Random seed.
         """
         self.test_size = test_size
         self.random_state = random_state
@@ -60,91 +72,126 @@ class DataPreprocessor:
         self.categorical_columns = None
         self.numerical_columns = None
 
-        
-
-
-    
     def prepare_target(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
         """
-        Prepare target variable from category column.
-        
+        Convert the 'category' column into a binary target and extract features.
+
+        Mapping:
+            1 → 0 (good)
+            2 → 1 (bad)
+
         Args:
-            df: Input DataFrame with 'category' column
-            
+            df: Input DataFrame containing a 'category' column.
+
         Returns:
-            Tuple of (features, target)
-            
+            (X, y) tuple of features and target.
+
         Raises:
-            ValueError: If category column is missing or contains invalid values
+            ValueError: If the category column is missing or invalid.
         """
         if "category" not in df.columns:
             raise ValueError("DataFrame does not contain 'category' column")
-        
-        # 1 = good, 2 = bad -> 0 = good, 1 = bad
+
         df = df.copy()
         df["target"] = df["category"].map({1: 0, 2: 1})
-        
+
         if df["target"].isna().any():
             raise ValueError("Target contains values other than 1/2")
-        
+
         X = df.drop(columns=["category", "target"])
         y = df["target"]
-        
+
         logger.info(f"Target distribution: {y.value_counts().to_dict()}")
         logger.info(f"Features shape: {X.shape}")
-        
+
         return X, y
-    
+
+    def basic_imputation(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+        Perform simple imputation for missing values.
+
+        - Numeric → median
+        - Categorical → mode or 'UNKNOWN'
+
+        Args:
+            X: Features DataFrame.
+
+        Returns:
+            DataFrame with missing values imputed.
+        """
+        X_imputed = X.copy()
+
+        # Numeric columns → median
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            if X[col].isna().any():
+                X_imputed[col] = X[col].fillna(X[col].median())
+
+        # Categorical columns → mode
+        categorical_cols = X.select_dtypes(include=['object']).columns
+        for col in categorical_cols:
+            if X[col].isna().any():
+                if not X[col].mode().empty:
+                    X_imputed[col] = X[col].fillna(X[col].mode()[0])
+                else:
+                    X_imputed[col] = X[col].fillna("UNKNOWN")
+
+        return X_imputed
+
     def identify_feature_types(self, X: pd.DataFrame):
         """
-        Identify categorical and numerical columns.
-        
+        Identify which columns are categorical or numerical.
+
         Args:
-            X: Features DataFrame
+            X: Feature dataset.
         """
         self.categorical_columns = X.select_dtypes(include=["object", "string"]).columns.tolist()
         self.numerical_columns = X.select_dtypes(exclude=["object", "string"]).columns.tolist()
-        
+
         logger.info(f"Categorical columns: {self.categorical_columns}")
         logger.info(f"Numerical columns: {self.numerical_columns}")
-    
+
     def create_preprocessor(self) -> ColumnTransformer:
         """
-        Create preprocessing pipeline for features.
-        
+        Build a ColumnTransformer with StandardScaler for numeric
+        and OneHotEncoder for categorical features.
+
         Returns:
-            Configured ColumnTransformer
+            Configured ColumnTransformer.
+
+        Raises:
+            ValueError: If feature types have not been identified.
         """
         if self.categorical_columns is None or self.numerical_columns is None:
             raise ValueError("Feature types not identified. Call identify_feature_types first.")
-        
+
         self.preprocessor = ColumnTransformer(
             transformers=[
                 ("num", StandardScaler(), self.numerical_columns),
                 ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), self.categorical_columns),
             ],
-            remainder="drop"
+            remainder="drop",
         )
-        
         return self.preprocessor
-    
+
     def split_data(self, X: pd.DataFrame, y: pd.Series) -> tuple:
         """
-        Split data into train and test sets.
-        
+        Split dataset into training and testing subsets with stratification.
+
         Args:
-            X: Features
-            y: Target
-            
+            X: Feature matrix.
+            y: Target vector.
+
         Returns:
-            Tuple of (x_train, x_test, y_train, y_test)
+            (X_train, X_test, y_train, y_test)
         """
         x_train, x_test, y_train, y_test = train_test_split(
-            X, y,
+            X,
+            y,
             test_size=self.test_size,
             random_state=self.random_state,
-            stratify=y
+            stratify=y,
         )
-        
+
         logger.info(f"Train set: {x_train.shape}, Test set: {x_test.shape}")
         return x_train, x_test, y_train, y_test
