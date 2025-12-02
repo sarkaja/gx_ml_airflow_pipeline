@@ -1,125 +1,170 @@
-# dq_improvement_pipeline.py
-import pandas as pd
-import numpy as np
-import json
-from data_quality_improver import DataQualityImprover
-from advanced_data_cleaning import AdvancedDataCleaning
-from dq_framework.data_quality_runner import run_data_quality_from_yaml_and_csv
-from dq_framework.yaml_dq_loader import load_yaml_config
-import os
+# optimized_dq_pipeline.py
+from typing import Dict
+import ast
 import logging
+
+import pandas as pd
+
+from unified_data_quality_improver import UnifiedDataQualityImprover
+from dq_framework.data_quality_runner import run_data_quality_from_yaml_and_dataframe
+from dq_framework.gx_yaml_dq_loader import gx_load_yaml_config
+from scripts.get_environment_config import ProjectConfig
+from sql.postgres_manager import PostgresManager
+from ml_pipeline.stats_check import evaluate_remediation_bias
+
+logger = logging.getLogger("airflow.task")
+
 
 class DQImprovementPipeline:
     """
-    Complete pipeline for improving data quality.
+    Pipeline for conditional DQ remediation and re-validation.
     """
-    
-    def __init__(self, yaml_config_path: str):
-        """
-        Initialize the DQ improvement pipeline.
-        
-        Args:
-            yaml_config_path: Path to YAML configuration file
-        """
-        self.yaml_config_path = yaml_config_path
+
+    def __init__(self) -> None:
+        """Initialize pipeline with config, validation rules, and improver."""
+        cfg = ProjectConfig()
+        self.corruption_type = cfg.get_corruption_function()
+        self.corruption_scenario = cfg.get_scenario()
+        self.yaml_validation_path = cfg.yaml_validation_path
         self.validation_rules = self._load_validation_rules()
-        self.basic_improver = DataQualityImprover(self.validation_rules)
-        self.advanced_cleaner = AdvancedDataCleaning()
-    
-    def _load_validation_rules(self) -> dict:
-        """
-        Load validation rules from YAML configuration.
-        
-        Returns:
-            Dictionary with validation rules
-        """
-        cfg = load_yaml_config(self.yaml_config_path)
-        return {
-            'expectations': cfg.expectations,
-        }
-    
-    def run_improvement_pipeline(self, input_csv_path: str, output_csv_path: str = None) -> dict:
-        """
-        Run complete data quality improvement pipeline.
-        
-        Args:
-            input_csv_path: Path to input CSV file with data quality issues
-            output_csv_path: Path for output improved CSV file
-            
-        Returns:
-            Dictionary with improvement results and statistics
-        """
+        self.improver = UnifiedDataQualityImprover(self.validation_rules)
 
-        df_original = pd.read_csv(input_csv_path, sep=';')
-        
-        # DQ validation on original data and further improvement
-        print("Running initial DQ validation...")
-        initial_results = run_data_quality_from_yaml_and_csv(
-            self.yaml_config_path,
-            input_csv_path,
-            dataset_id="before_improvement",
-            run_id="initial_check",
-            save_to_db=False
+    def _load_validation_rules(self) -> Dict:
+        """
+        Load validation rules from GX YAML file.
+
+        Returns:
+            Dict mapping expectation names to rules.
+        """
+        yaml_cfg = gx_load_yaml_config(self.yaml_validation_path)
+        return {"expectations": yaml_cfg.expectations}
+
+    def run_improvement_pipeline(
+        self,
+        df: pd.DataFrame,
+        target_table_name: str,
+        dataset_id: str,
+        failed_expectations: str,
+        initial_unsuccessful_expectations: int,
+        initial_success_rate: int,
+    ) -> Dict:
+        """
+        Run remediation, save improved data, and perform final DQ validation.
+
+        Args:
+            df: Input dataframe to remediate.
+            target_table_name: DB table for saving remediated data.
+            dataset_id: Identifier for this run.
+            failed_expectations: Expectation failures from initial validation.
+            initial_unsuccessful_expectations: Original failed expectation count.
+            initial_success_rate: Original DQ success rate.
+
+        Returns:
+            Dict with final validation results and improvement metrics.
+        """
+        db_manager = PostgresManager()
+
+        logger.info(
+            "Running conditional remediation for failed expectations: %s",
+            failed_expectations,
+        )
+        failed_expectations = ast.literal_eval(failed_expectations)
+
+        # Configure improver
+        self.improver.set_failed_expectations(failed_expectations)
+        logger.info(
+            "Running conditional remediation for %d failed expectations",
+            len(failed_expectations),
         )
 
-        df_improved = self.basic_improver.improve_data_quality(df_original)
-        
-        # Advanced cleaning part
-        numeric_columns = df_improved.select_dtypes(include=[np.number]).columns.tolist()
-        if 'category' in numeric_columns:
-            numeric_columns.remove('category')
-        
-        df_improved = self.advanced_cleaner.multivariate_outlier_detection(df_improved)
-        df_improved = self.advanced_cleaner.smart_categorical_imputation(df_improved)
-        
-        # Save improved data and run DQ validation on them
-        if output_csv_path is None:
-            base_name = os.path.splitext(input_csv_path)[0]
-            output_csv_path = f"{base_name}_improved.csv"
-        
-        df_improved.to_csv(output_csv_path, sep=';', index=False)
+        # Apply remediation rules
+        df_improved = self.improver.improve_data_quality(df)
 
-        final_results = run_data_quality_from_yaml_and_csv(
-            self.yaml_config_path,
-            output_csv_path,
-            dataset_id="after_improvement", 
-            run_id="final_check",
-            save_to_db=False
+        # Drift evaluation
+        logger.info("Evaluating remediation distribution drift...")
+        drift_report = evaluate_remediation_bias(df_improved)
+        for col, metrics in drift_report.items():
+            dominant_growth = metrics.get("dominant_growth", 0)
+            psi = metrics.get("psi", 0)
+            kl = metrics.get("kl_divergence", 0)
+
+            if abs(dominant_growth) > 0.10:
+                logger.warning(
+                    "[%s] dominant value increased by %.2f → potential bias",
+                    col, dominant_growth
+                )
+            if psi > 0.25:
+                logger.warning("[%s] PSI=%.3f → strong drift", col, psi)
+            if kl > 0.2:
+                logger.warning("[%s] KL divergence=%.3f → large distribution shift", col, kl)
+
+        # Save improved data
+        db_manager.save_corrupted_data(
+            df=df_improved,
+            table_name=target_table_name,
+            corruption_type=self.corruption_type,
+            corruption_scenario=self.corruption_scenario,
+            dataset_id=dataset_id,
         )
-        
-        # Calculate improvement metrics
-        improvement_stats = self._calculate_improvement(initial_results, final_results)
-        
-        return {
-            'initial_results': initial_results,
-            'final_results': final_results,
-            'improvement_stats': improvement_stats,
-            'improved_file_path': output_csv_path
-        }
-    
 
-    def _calculate_improvement(self, initial_results: dict, final_results: dict) -> dict:
-        """
-        Calculate data quality improvement metrics.
-        
-        Args:
-            initial_results: DQ results before improvement
-            final_results: DQ results after improvement
-            
-        Returns:
-            Dictionary with improvement statistics
-        """
-        initial_stats = initial_results.get('statistics', {})
-        final_stats = final_results.get('statistics', {})
-        
-        initial_success_rate = initial_stats.get('success_percent', 0)
-        final_success_rate = final_stats.get('success_percent', 0)
-        
+        # Final validation
+        final_results = run_data_quality_from_yaml_and_dataframe(
+            df_improved,
+            dataset_id=dataset_id,
+            save_to_db=True,
+        )
+
+        # Improvement metrics
+        improvement_stats = self._calculate_improvement(
+            initial_success_rate,
+            initial_unsuccessful_expectations,
+            final_results,
+        )
+
         return {
-            'initial_success_rate': initial_success_rate,
-            'final_success_rate': final_success_rate,
-            'improvement': final_success_rate - initial_success_rate,
-            'initial_failures': initial_stats.get('unsuccessful_expectations', 0),
-            'final_failures': final_stats.get('unsuccessful_expectations', 0),
-            'failures_fixed': initial_stats.get('unsuccessful_expectations', 0) - final_stats.get('unsuccessful_expectations', 0)
+            "final_results": final_results,
+            "improvement_stats": improvement_stats,
+            "improved_file_path": target_table_name,
+            "remediated_dataframe": df_improved,
+            "remediated_expectations": len(failed_expectations),
         }
+
+    def _calculate_improvement(
+        self,
+        initial_success_rate: int,
+        initial_unsuccessful_expectations: int,
+        final_results: Dict,
+    ) -> Dict:
+        """
+        Compute before/after DQ success metrics.
+
+        Args:
+            initial_success_rate: DQ success rate before remediation.
+            initial_unsuccessful_expectations: Number of failed expectations before remediation.
+            final_results: Final DQ validation results.
+
+        Returns:
+            Dict with success deltas, failure reductions, and percentages.
+        """
+        final_stats = final_results.get("statistics", {})
+        final_success_rate = final_stats.get("success_percent", 0)
+        final_failures = final_stats.get("unsuccessful_expectations", 0)
+
+        improvement = final_success_rate - initial_success_rate
+        failures_fixed = initial_unsuccessful_expectations - final_failures
+        improvement_percentage = (
+            (improvement / initial_success_rate * 100)
+            if initial_success_rate > 0
+            else 0
+        )
+
+        return {
+            "initial_success_rate": initial_success_rate,
+            "final_success_rate": final_success_rate,
+            "improvement": improvement,
+            "initial_failures": initial_unsuccessful_expectations,
+            "final_failures": final_failures,
+            "failures_fixed": failures_fixed,
+            "improvement_percentage": improvement_percentage,
+        }
+

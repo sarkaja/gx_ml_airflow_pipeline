@@ -84,7 +84,6 @@ class PandasYamlValidator:
         df,
         expectations,                 
         config,
-        run_id=None,
         result_format="COMPLETE"
     ) -> Dict[str, Any]:
         """
@@ -97,7 +96,6 @@ class PandasYamlValidator:
                 - expectation_suite_name (str): Name for the expectation suite
                 - data_asset_name (str): Name for the data asset
                 - batch_definition_name (str): Name for the batch definition
-            run_id (Optional[str]): Unique identifier for this validation run.
             result_format (str): Level of detail in results. Defaults to "COMPLETE".
                 
         Returns:
@@ -106,7 +104,6 @@ class PandasYamlValidator:
                 - results (list): Detailed results for each expectation
                 - statistics (dict): Summary statistics
                 - meta (dict): Metadata about the validation
-                - id (str): The run_id provided or generated
                 
         """
         suite = self._get_or_create_suite(config.expectation_suite_name)
@@ -132,13 +129,11 @@ class PandasYamlValidator:
         )
 
         validation_results = validator.validate(
-            run_id=run_id,
             result_format={
                 "result_format": result_format,
             },
         )
 
         out = validation_results.to_json_dict()
-        out["id"] = run_id
 
         return out

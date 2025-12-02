@@ -2,22 +2,22 @@
 import pandas as pd
 import numpy as np
 
-def introduce_relationship_violations(df: pd.DataFrame, corruption_level: str = "medium") -> pd.DataFrame:
+def introduce_relationship_violations(df: pd.DataFrame, scenario: str) -> pd.DataFrame:
     """
     Introduce violations in data relationships and business logic.
     
     Args:
         df: Original German Credit dataset
-        corruption_level: "light", "medium", or "severe"
+        scenario: "light", "medium", or "severe"
         
     Returns:
         Corrupted DataFrame with relationship violations
     """
     df_corrupted = df.copy()
     
-    if corruption_level == "light":
+    if scenario == "light":
         prob = 0.02
-    elif corruption_level == "medium":
+    elif scenario == "medium":
         prob = 0.05
     else:  # more severe but still can be an outlier
         prob = 0.08

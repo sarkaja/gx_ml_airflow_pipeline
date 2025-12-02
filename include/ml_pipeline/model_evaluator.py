@@ -31,7 +31,7 @@ class ModelEvaluator:
         self.random_state = random_state
   
     def evaluate_model(self, model, x_test: pd.DataFrame, y_test: pd.Series, 
-                      model_name: str, dataset_name: str) -> Dict[str, Any]:
+                      model_name: str, dataset_id: str) -> Dict[str, Any]:
         """
         Evaluate model on test set.
         
@@ -40,7 +40,7 @@ class ModelEvaluator:
             x_test: Test features
             y_test: Test target
             model_name: Name of the model
-            dataset_name: Name of the dataset
+            dataset_id: Name of the dataset
             
         Returns:
             Dictionary with evaluation metrics
@@ -51,7 +51,7 @@ class ModelEvaluator:
         
         # Calculate metrics
         metrics = {
-            "dataset": dataset_name,
+            "dataset_id": dataset_id,
             "model": model_name,
             "accuracy": accuracy_score(y_test, y_pred),
             "precision": precision_score(y_test, y_pred, average="weighted"),
@@ -66,7 +66,7 @@ class ModelEvaluator:
             y_test, y_pred, target_names=["good(0)", "bad(1)"], output_dict=False
         )
         
-        logger.info(f"{model_name} evaluation completed on {dataset_name}")
+        logger.info(f"{model_name} evaluation completed on {dataset_id}")
         logger.info(f"Accuracy: {metrics['accuracy']:.3f}, ROC-AUC: {metrics['roc_auc']:.3f}")
         
         return metrics
@@ -123,7 +123,7 @@ class ModelEvaluator:
         return cv_summary
     
     def compare_models(self, models: Dict[str, Any], x_test: pd.DataFrame, 
-                      y_test: pd.Series, dataset_name: str) -> List[Dict[str, Any]]:
+                      y_test: pd.Series, dataset_id: str) -> List[Dict[str, Any]]:
         """
         Compare multiple models on the same test set.
         
@@ -131,7 +131,7 @@ class ModelEvaluator:
             models: Dictionary of model names to trained models
             x_test: Test features
             y_test: Test target
-            dataset_name: Name of the dataset
+            dataset_id: ID of the dataset
             
         Returns:
             List of evaluation results for each model
@@ -139,12 +139,12 @@ class ModelEvaluator:
         results = []
         
         for model_name, model in models.items():
-            metrics = self.evaluate_model(model, x_test, y_test, model_name, dataset_name)
+            metrics = self.evaluate_model(model, x_test, y_test, model_name, dataset_id)
             results.append(metrics)
         
         results.sort(key=lambda x: x["accuracy"], reverse=True)
         
-        logger.info(f"Model comparison completed for {dataset_name}")
+        logger.info(f"Model comparison completed for {dataset_id}")
         logger.info(f"Best model: {results[0]['model']} (Accuracy: {results[0]['accuracy']:.3f})")
         
         return results
