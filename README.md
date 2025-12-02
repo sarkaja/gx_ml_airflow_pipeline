@@ -78,7 +78,7 @@ database.schema
 
 
 When adding new corruption strategies or DQ rules, update:
-- YAML config
+- YAML validation config
 
 
 ```mermaid
