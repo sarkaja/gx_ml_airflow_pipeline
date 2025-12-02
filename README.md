@@ -79,3 +79,44 @@ database.schema
 
 When adding new corruption strategies or DQ rules, update:
 - YAML config
+
+
+```mermaid
+sequenceDiagram
+    participant IL as german_credit_initial_load
+    participant DB as PostgreSQL
+    participant CORR as german_credit_dq_corruption
+    participant DQ as german_credit_data_quality
+    participant REM as german_credit_dq_remediation
+    participant ML as german_credit_ml_pipeline
+
+    Note over IL: One-time manual run
+    IL->>DB: INSERT raw_german_credit_data (dataset_id = il_YYMMDD_HHMM)
+
+    Note over CORR: Scheduled (@daily) or manual
+    CORR->>DB: SELECT raw_german_credit_data<br/>data_source = 'original_csv'
+    CORR->>DB: INSERT corrupted_german_credit_data<br/>dataset_id = corrupt_YYMMDD_HHMM
+    CORR-->>DQ: Emit DQ_RESULTS_DATASET (dataset event)
+
+    Note over DQ: Scheduled by DQ_RESULTS_DATASET
+    DQ->>DB: SELECT corrupted_german_credit_data<br/>by latest dataset_id
+    DQ->>DQ: run_data_quality_from_yaml_and_dataframe()
+    DQ-->>DQ: Compute success_rate, failed_expectations
+    alt DQ success (>= threshold)
+        DQ-->>ML: TriggerDagRun (german_credit_ml_pipeline)<br/> + table_name + dataset_id
+    else DQ fail (< threshold)
+        DQ-->>REM: TriggerDagRun (german_credit_dq_remediation)<br/> + failed_expectations + stats + dataset_id
+    end
+
+    Note over REM: Remediation path
+    REM->>DB: SELECT corrupted_german_credit_data<br/>by dataset_id
+    REM-->>DB: INSERT remediated_german_credit_data<br/>dataset_id = remed_...
+    REM-->>DQ: run_data_quality_from_yaml_and_dataframe() on remediated data
+    alt Remediation success (>= threshold)
+        REM-->>ML: TriggerDagRun (german_credit_ml_pipeline)<br/> + remediated table_name + dataset_id
+    else Remediation fail
+        REM-->>REM: stop / manual investigation
+    end
+
+    Note over ML: Final stage
+    ML->>DB: SELECT {raw/corrupted/remediated}_german_credit_data<br/>by dataset_id
